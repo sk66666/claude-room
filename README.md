@@ -83,6 +83,8 @@ Messaging with idle wake-up:
 
 ## Installation
 
+**Requirements:** Node.js >= 18. No npm dependencies.
+
 From the marketplace (recommended):
 
 ```
@@ -147,8 +149,9 @@ No configuration is required. Two environment variables are recognized:
   (`[room]` hints, warnings, command output) to Chinese.
 - `ROOM_DIR` — override the state directory. Mainly for tests. By default
   state resolves in priority order to: `ROOM_DIR` →
-  `$CLAUDE_PROJECT_DIR/.claude/room` → `<cwd>/.claude/room` → the script
-  directory (read-only last resort).
+  `$CLAUDE_PROJECT_DIR/.claude/room` → `<cwd>/.claude/room` (this cwd fallback
+  only applies when a `.claude` directory already exists at that project root)
+  → the script directory (read-only last resort).
 
 Time and size windows (not configurable, tuned in practice):
 
@@ -188,10 +191,11 @@ commands — claude-room needs exactly one wiring per event.
 ## FAQ
 
 **When is a message actually delivered?**
-At the *receiving session's next turn end* (Stop hook) or next session start —
-whichever comes first. If the receiver is mid-turn for a long time, delivery
-waits. `send` itself never blocks the receiver; `wait` is purely the sender
-blocking for a reply.
+At the *receiving session's next turn end* (Stop hook), next prompt
+(UserPromptSubmit `inject` also delivers unread messages), or next session
+start — whichever comes first. If the receiver is mid-turn for a long time,
+delivery waits. `send` itself never blocks the receiver; `wait` is purely the
+sender blocking for a reply.
 
 **Why doesn't the CLI know its own session id?**
 The `room.js send` process is just a child of the Bash tool — it has no

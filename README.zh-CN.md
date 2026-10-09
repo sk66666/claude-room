@@ -76,6 +76,8 @@ claude-room 把并行会话变成队友：文件变更广播、编辑冲突软�
 
 ## 安装
 
+**环境要求：** Node.js >= 18，无 npm 依赖。
+
 marketplace 方式（推荐）：
 
 ```
@@ -133,7 +135,8 @@ claude --plugin-dir ./claude-room
 - `ROOM_LANG` —— `zh` 或 `en`（默认 `en`）。切换所有运行时文案（`[room]`
   提示、警告、命令输出）为中文。
 - `ROOM_DIR` —— 覆盖状态目录，主要用于测试。默认按优先级解析为：
-  `ROOM_DIR` → `$CLAUDE_PROJECT_DIR/.claude/room` → `<cwd>/.claude/room` →
+  `ROOM_DIR` → `$CLAUDE_PROJECT_DIR/.claude/room` → `<cwd>/.claude/room`
+  （该 cwd 兜底仅在项目根已存在 `.claude` 目录时生效）→
   脚本所在目录（只读兜底）。
 
 时间与体积窗口（不可配置，按实践调校）：
@@ -169,9 +172,10 @@ claude --plugin-dir ./claude-room
 ## 常见问题
 
 **消息什么时候真正送达？**
-在**收件会话的下一个回合结束**（Stop hook）或下次会话启动时，以先到者为
-准。收件方正处在长回合中时，投递会等待。`send` 本身绝不阻塞对方；`wait` 只
-是发信方自己在等回信。
+在**收件会话的下一个回合结束**（Stop hook）、下一条提示（UserPromptSubmit
+的 `inject` 同样会投递未读消息）或下次会话启动时，以先到者为准。收件方正处
+在长回合中时，投递会等待。`send` 本身绝不阻塞对方；`wait` 只是发信方自己在
+等回信。
 
 **为什么 CLI 不知道自己的会话 id？**
 `room.js send` 只是 Bash 工具的子进程，没有可靠途径得知自己是哪个 Claude

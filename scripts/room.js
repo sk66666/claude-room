@@ -46,32 +46,32 @@ const LOG_FILE = path.join(ROOM_DIR, "log.jsonl");
 const MAILBOX_FILE = path.join(ROOM_DIR, "mailbox.jsonl");
 const RECEIPTS_FILE = path.join(ROOM_DIR, "receipts.jsonl");
 const UNATTEND_FILE = path.join(ROOM_DIR, "unattend.jsonl");
-const RETENTION_MS = 24 * 60 * 60 * 1000; // 日志保留：24 小时
-const WINDOW_MS = 10 * 60 * 1000;         // inject 窗口：10 分钟
-const EDIT_MS = 10 * 60 * 1000;           // guard-edit：他人编辑该文件窗口
-const ALIVE_MS = 5 * 60 * 1000;           // guard-edit：会话活跃窗口（心跳）
-const COMMIT_MS = 3 * 60 * 1000;          // guard-commit：他人提交窗口
-const CMD_MAX = 200;                      // bash 命令截断长度
-const MAX_LOG_BYTES = 512 * 1024;         // 日志体积阈值：超限时低频全量重写并修剪 24h 以上旧条目
-const SEND_DEDUP_MS = 5000;               // CLI send 对 hook 刚写过的相同消息去重的窗口
-const PENDING_MS = 60 * 60 * 1000;        // pending 命令回看的消息窗口：1 小时
-const IDLE_WARN_MS = 3 * 60 * 1000;       // send 目标闲置警告阈值：超 3 分钟无活动大概率错过 Stop 唤醒
-const STALE_LOCK_MS = 30 * 60 * 1000;     // 锁持有者死亡判定：超 30 分钟无活动视为残留锁，可被接管
-const WAIT_POLL_MS = 3 * 1000;            // wait 轮询间隔：3 秒
-const WAIT_MAX_SEC = 300;                 // wait 超时上限：5 分钟（防僵尸阻塞）
+const RETENTION_MS = 24 * 60 * 60 * 1000; // log retention: 24 hours
+const WINDOW_MS = 10 * 60 * 1000;         // inject window: 10 minutes
+const EDIT_MS = 10 * 60 * 1000;           // guard-edit: window during which another session edited the file
+const ALIVE_MS = 5 * 60 * 1000;           // guard-edit: session liveness window (heartbeat)
+const COMMIT_MS = 3 * 60 * 1000;          // guard-commit: window during which another session committed
+const CMD_MAX = 200;                      // bash command truncation length
+const MAX_LOG_BYTES = 512 * 1024;         // log size threshold: when exceeded, occasionally rewrite in full and prune entries older than 24h
+const SEND_DEDUP_MS = 5000;               // window for CLI send to dedup against the same message the hook just wrote
+const PENDING_MS = 60 * 60 * 1000;        // message lookback window for the pending command: 1 hour
+const IDLE_WARN_MS = 3 * 60 * 1000;       // send target idle warning threshold: no activity for over 3 min means the Stop wake-up was likely missed
+const STALE_LOCK_MS = 30 * 60 * 1000;     // lock-holder death threshold: no activity for over 30 min means a stale lock that can be taken over
+const WAIT_POLL_MS = 3 * 1000;            // wait poll interval: 3 seconds
+const WAIT_MAX_SEC = 300;                 // wait timeout cap: 5 minutes (guards against zombie blocking)
 const GIT_MUTATION_RE = /(^|\s)git\s+(add|commit|push|rm|mv|restore|checkout|reset)\b/;
 const GIT_STAGE_COMMIT_RE = /git\s+(add|commit)\b/;
-// room.js send <to> "<text>"：to 为 4 位以上 sid 前缀或字面量 all；text 必须带引号且是命令末尾
-// 文本捕获用转义感知形式（[^"\\]|\\.）：遇未转义引号即止，文本内可含转义双引号（\"），捕获后还原成真实引号；
-// 消息引号后允许接不含引号的 || / && 短语后缀（如 "…\" || echo FAILED"——实测事故：曾因这种后缀 stamp 未命中被误诊为超时）；
-// 含引号的后缀（可藏第二条 send）与管道/重定向后缀仍拒绝
-// 脚本路径可能带引号（node "…/room.js" send），room\.js 后允许一个闭合引号
+// room.js send <to> "<text>": to is a 4+ char sid prefix or the literal "all"; text must be quoted and end the command
+// Text capture uses the escape-aware form ([^"\\]|\\.): it stops at an unescaped quote; escaped double quotes (\") inside the text are allowed and restored to real quotes after capture;
+// After the message's closing quote, a quote-free || / && phrase suffix is allowed (e.g. "…\" || echo FAILED" — real incident: such a suffix once caused a stamp miss that was misdiagnosed as a timeout);
+// Suffixes containing quotes (which could hide a second send) and pipe/redirection suffixes are still rejected
+// The script path itself may be quoted (node "…/room.js" send); one closing quote is allowed after room\.js
 const SEND_CMD_RE = /room\.js['"]?\s+send\s+(all|[0-9a-zA-Z]{4,})\s+"((?:[^"\\]|\\.)*)"\s*(?:(?:\|\||&&)[^"']*)?$|room\.js['"]?\s+send\s+(all|[0-9a-zA-Z]{4,})\s+'((?:[^'\\]|\\.)*)'\s*(?:(?:\|\||&&)[^"']*)?$/;
-// room.js lock|unlock <name>：互斥锁裁决也走 PreToolUse hook（CLI 不知道自己的 sid，必须 hook 权威裁决）
+// room.js lock|unlock <name>: mutex lock adjudication also goes through the PreToolUse hook (the CLI does not know its own sid; the hook must adjudicate authoritatively)
 const LOCK_CMD_RE = /room\.js['"]?\s+(lock|unlock)\s+([a-z0-9-]{1,40})\s*$/;
-// room.js unattend reg|done <seq>：无人值守队列注册/完成，sid 同样由 stamp hook 权威盖戳；必须是命令末尾段
+// room.js unattend reg|done <seq>: unattended-queue register/complete; the sid is likewise stamped authoritatively by the stamp hook; must be the trailing segment of the command
 const UNATTEND_CMD_RE = /room\.js['"]?\s+unattend\s+(reg|done)\s+([0-9]{1,3})\s*$/;
-const UNATTEND_STAMP_MS = 5000;             // unattend CLI 对 hook 刚写条目的确认窗口（同 send 去重窗口）
+const UNATTEND_STAMP_MS = 5000;             // window for the unattend CLI to confirm an entry the hook just wrote (same as the send dedup window)
 
 function readStdin() {
   try {
@@ -81,7 +81,7 @@ function readStdin() {
   }
 }
 
-// hook 输入的 file_path 恒为绝对路径，Windows 下反斜杠分隔，必须归一化
+// file_path from hook input is always absolute, backslash-separated on Windows; must be normalized
 function toRepoRelative(p, cwd) {
   const file = String(p).replace(/\\/g, "/");
   const dir = String(cwd).replace(/\\/g, "/").replace(/\/+$/, "");
@@ -111,8 +111,8 @@ function writeJsonl(file, entries) {
   fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join("\n") + (entries.length ? "\n" : ""), "utf8");
 }
 
-// 追加写避免并发丢条目：read-modify-write 在多窗口并行会话下会互相覆盖；
-// 仅体积超限且确有 24h 以上旧条目可修剪时才全量重写（无可修剪时继续追加，避免每次写都重写整个文件）
+// Append writes avoid losing entries to concurrency: read-modify-write lets parallel multi-window sessions overwrite each other;
+// a full rewrite happens only when size exceeds the cap AND there are entries older than 24h to prune (with nothing prunable, keep appending so a write never rewrites the whole file)
 function appendTrimmed(file, entry) {
   const size = fs.existsSync(file) ? fs.statSync(file).size : 0;
   let trimmed = null;
@@ -133,7 +133,7 @@ function isAlive(entries, sid, now, aliveMs) {
   return entries.some((e) => e.sid === sid && e.ts >= now - aliveMs);
 }
 
-// 软提示唯一出口：有冲突时输出 additionalContext 纯 JSON；无冲突输出空串
+// Sole exit for soft warnings: on conflict outputs additionalContext pure JSON; empty string otherwise
 function emitWarning(text) {
   if (!text) return;
   process.stdout.write(
@@ -143,7 +143,7 @@ function emitWarning(text) {
   );
 }
 
-// ── 消息：id 用 时间戳+pid+进程内序号 保证跨进程唯一 ──
+// ── Messages: the id uses timestamp + pid + in-process sequence to stay unique across processes ──
 let msgSeq = 0;
 function appendMessage(from, to, text) {
   const now = Date.now();
@@ -185,9 +185,9 @@ function formatMessages(msgs, now) {
   });
 }
 
-// ── v3 命令 ──
+// ── v3 commands ──
 
-// PreToolUse(Bash)：hook 输入带权威 session_id，在命令真正执行前把消息落盘
+// PreToolUse(Bash): the hook input carries the authoritative session_id; persist the message before the command actually runs
 function cmdStampSend(input) {
   const sid = input.session_id ? String(input.session_id) : "";
   const cmd = input.tool_input && input.tool_input.command ? String(input.tool_input.command) : "";
@@ -208,7 +208,7 @@ function cmdStampSend(input) {
   }
 }
 
-// ── 互斥锁：裁决在 hook（deny 拦下命令并提示），CLI 只回显结果 ──
+// ── Mutex lock: adjudication happens in the hook (deny blocks the command with a hint); the CLI only echoes the result ──
 function lockFile(name) {
   return path.join(ROOM_DIR, `lock-${name}.json`);
 }
@@ -223,7 +223,7 @@ function readLock(name) {
   }
 }
 
-// 持有者最近一次活动（扫全量 log，不受 10 分钟窗口限制）
+// Holder's most recent activity (scans the full log, not limited to the 10-minute window)
 function holderLastActiveTs(sid) {
   let latest = null;
   for (const e of readJsonl(LOG_FILE)) {
@@ -297,9 +297,9 @@ function cmdLockCli(name, isUnlock) {
   process.stdout.write(msg("lockCliHolder", name, shortSid(cur.sid), sec) + "\n");
 }
 
-// ── 无人值守队列（/unattend 命令）：多窗口按序号排队互斥执行，注册/完成标记 sid 由 stamp hook 盖戳 ──
+// ── Unattended queue (/unattend command): multi-window mutual exclusion by sequence number; register/complete markers get their sid stamped by the stamp hook ──
 
-// 按 seq 聚合 unattend.jsonl：任意 done 即算该序号完成；重复 reg 保留最早一条
+// Aggregate unattend.jsonl by seq: any done marks that seq complete; duplicate regs keep the earliest one
 function unattendRows() {
   const rows = new Map();
   for (const e of readJsonl(UNATTEND_FILE)) {
@@ -472,7 +472,7 @@ function cmdPending(idArg) {
   );
 }
 
-// 主线程同步休眠（不占 CPU），wait 的轮询间隔用
+// Synchronous sleep on the main thread (no CPU spin); used for the wait poll interval
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -548,11 +548,11 @@ function cmdDeliver(input) {
   }
 }
 
-// 近 WINDOW_MS 有活动的会话清单（sid、最近活动、在改文件），who 与 send 目标校验共用
+// Sessions active within the last WINDOW_MS (sid, last activity, files being edited); shared by who and send target validation
 function activeSessions(now) {
   const entries = readJsonl(LOG_FILE).filter((e) => e.sid && e.ts >= now - WINDOW_MS);
-  const lastTs = new Map(); // sid -> 最近活动 ts
-  const files = new Map();  // sid -> Map(file -> 最新 ts)
+  const lastTs = new Map(); // sid -> latest activity ts
+  const files = new Map();  // sid -> Map(file -> latest ts)
   for (const e of entries) {
     const prev = lastTs.get(e.sid);
     if (!prev || e.ts > prev) lastTs.set(e.sid, e.ts);
@@ -589,7 +589,7 @@ function cmdWho() {
   );
 }
 
-// ── v2 命令 ──
+// ── v2 commands ──
 
 function cmdLog(input) {
   const sid = input.session_id ? String(input.session_id) : "";
@@ -728,5 +728,5 @@ try {
     }
   }
 } catch {
-  // 任何内部错误静默退出，绝不阻断用户流程
+  // Any internal error: exit silently; never block the user's flow
 }
