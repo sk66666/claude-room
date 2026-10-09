@@ -42,6 +42,9 @@ const ROOM_DIR =
     : fs.existsSync(path.join(process.cwd(), ".claude"))
       ? path.join(process.cwd(), ".claude", "room")
       : __dirname);
+// Bootstrap: nothing else creates the state dir; without this, every first write
+// on a fresh workspace ENOENTs and is silently swallowed by the top-level catch.
+try { fs.mkdirSync(ROOM_DIR, { recursive: true }); } catch {}
 const LOG_FILE = path.join(ROOM_DIR, "log.jsonl");
 const MAILBOX_FILE = path.join(ROOM_DIR, "mailbox.jsonl");
 const RECEIPTS_FILE = path.join(ROOM_DIR, "receipts.jsonl");
@@ -241,8 +244,11 @@ function lockAdjudicate(sid, isUnlock, name) {
     if (cur.sid !== sid) {
       process.stdout.write(
         JSON.stringify({
-          decision: "deny",
-          reason: msg("lockDenyRelease", name, shortSid(cur.sid), path.basename(lockFile(name))),
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+            permissionDecisionReason: msg("lockDenyRelease", name, shortSid(cur.sid), path.basename(lockFile(name))),
+          },
         })
       );
       return;
@@ -260,8 +266,11 @@ function lockAdjudicate(sid, isUnlock, name) {
     const min = Math.max(1, Math.round((now - holderTs) / 60000));
     process.stdout.write(
       JSON.stringify({
-        decision: "deny",
-        reason: msg("lockDenyHeld", name, shortSid(cur.sid), min, path.basename(lockFile(name)), CLI_PATH),
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "deny",
+          permissionDecisionReason: msg("lockDenyHeld", name, shortSid(cur.sid), min, path.basename(lockFile(name)), CLI_PATH),
+        },
       })
     );
     return;

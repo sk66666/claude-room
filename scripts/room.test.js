@@ -444,9 +444,9 @@ test("lock: held by an active peer → hook denies with the holder shown, the co
     stdin: { session_id: SID_B, tool_input: { command: "node .claude/room/room.js lock deploy" } },
   });
   const parsed = JSON.parse(out);
-  assert.equal(parsed.decision, "deny");
-  assert.match(parsed.reason, /aaaaaa/); // 提示持有者短 id
-  assert.match(parsed.reason, /deploy/);
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /aaaaaa/); // 提示持有者短 id
+  assert.match(parsed.hookSpecificOutput.permissionDecisionReason, /deploy/);
   // 锁未被夺走
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "lock-deploy.json"), "utf8")).sid, SID_A);
 });
@@ -477,7 +477,9 @@ test("unlock: holder releases successfully; release by others is denied", () => 
     roomDir: dir,
     stdin: { session_id: SID_B, tool_input: { command: "node .claude/room/room.js unlock deploy" } },
   });
-  assert.equal(JSON.parse(denied).decision, "deny");
+  const deniedParsed = JSON.parse(denied);
+  assert.equal(deniedParsed.hookSpecificOutput.permissionDecision, "deny");
+  assert.ok(deniedParsed.hookSpecificOutput.permissionDecisionReason);
   const ok = run(["stamp-send"], {
     roomDir: dir,
     stdin: { session_id: SID_A, tool_input: { command: "node .claude/room/room.js unlock deploy" } },
@@ -928,4 +930,37 @@ test("hints: stamp-miss output embeds the real script path (CLI_PATH), not the o
   const expect = 'node "' + __dirname.replace(/\\/g, "/") + '/room.js" send';
   assert.ok(stdout.includes(expect), `hint should embed the real script path, got: ${stdout.slice(0, 200)}`);
   assert.ok(!/\.claude\/room\/room\.js/.test(stdout), "must not hardcode the old .claude/room path");
+});
+
+// ── e2e regression fixes: state-dir bootstrap + modern PreToolUse deny format ──
+
+test("bootstrap: ROOM_DIR pointing at a non-existent deeply nested path is auto-created and the write succeeds", () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), "room-boot-"));
+  const nested = path.join(base, "deep", "nest", "lvl3", "room"); // 多级不存在目录
+  run(["stamp-send"], {
+    roomDir: nested,
+    stdin: { session_id: SID_A, tool_input: { command: 'node .claude/room/room.js send bbbbbb "bootstrap"' } },
+  });
+  assert.ok(fs.existsSync(nested), "state dir must be auto-created");
+  const msgs = lines(nested, "mailbox.jsonl");
+  assert.equal(msgs.length, 1); // 首写成功，不再 ENOENT 静默失败
+  assert.equal(msgs[0].text, "bootstrap");
+});
+
+test("lock deny (en): output is hookSpecificOutput.permissionDecision JSON with a reason and no Chinese characters", () => {
+  const dir = newRoom();
+  fs.appendFileSync(
+    path.join(dir, "log.jsonl"),
+    JSON.stringify({ kind: "edit", sid: SID_A, ts: Date.now() - 30000, tool: "Edit", file: "src/a.ts" }) + "\n"
+  );
+  run(["stamp-send"], { roomDir: dir, stdin: { session_id: SID_A, tool_input: { command: "node .claude/room/room.js lock deploy" } } });
+  const out = execFileSync("node", [ROOM_JS, "stamp-send"], {
+    input: JSON.stringify({ session_id: SID_B, tool_input: { command: "node .claude/room/room.js lock deploy" } }),
+    env: { ...process.env, ROOM_DIR: dir, ROOM_LANG: "" },
+  }).toString();
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.hookSpecificOutput.hookEventName, "PreToolUse");
+  assert.equal(parsed.hookSpecificOutput.permissionDecision, "deny");
+  assert.ok(parsed.hookSpecificOutput.permissionDecisionReason.length > 0);
+  assert.doesNotMatch(out, /[一-鿿]/, "en deny output must not contain Chinese");
 });

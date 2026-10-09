@@ -18,7 +18,7 @@ const catalogs = {
       `Lock "${name}" is still held by session ${holder} (release should happen in the same hook-approved command)`,
     lockCliReleased: (name) => `✅ Lock "${name}" released (or was not held)`,
     lockCliNoRecord: (name, cli, action) =>
-      `⚠ No lock record for "${name}" (hook not effective?) — check the command form: ${cli} ${action} ${name}`,
+      `⚠ No lock record for "${name}" (hook not effective?) — check the command form: ${cli} ${action} ${name} Note: the lock/unlock command must be the final segment of your Bash command — no trailing suffixes.`,
     lockCliHolder: (name, holder, sec) => `🔒 Lock "${name}" holder: session ${holder} (confirmed ${sec}s ago)`,
     // ── unattend ──
     queueHeader: () => `[unattend] Queue status (execute in ascending seq order; only one session holds "lock unattend" at a time):`,
@@ -111,7 +111,7 @@ const catalogs = {
     lockUsage: (cli) => `用法: ${cli} lock|unlock <name>`,
     lockCliStillHeld: (name, holder) => `${name} 锁仍由会话 ${holder} 持有（释放应在 hook 放行的同一条命令里完成）`,
     lockCliReleased: (name) => `✅ ${name} 锁已释放（或本无锁）`,
-    lockCliNoRecord: (name, cli, action) => `⚠ ${name} 无锁记录（hook 未生效？）——请确认命令形式：${cli} ${action} ${name}`,
+    lockCliNoRecord: (name, cli, action) => `⚠ ${name} 无锁记录（hook 未生效？）——请确认命令形式：${cli} ${action} ${name} 注意：lock/unlock 必须是整条命令的末尾段，后面不能追加任何后缀。`,
     lockCliHolder: (name, holder, sec) => `🔒 ${name} 锁当前持有者：会话 ${holder}（${sec} 秒前确认）`,
     queueHeader: () => `[unattend] 队列状态（按序号升序执行，同一时刻仅一人持 lock unattend 执行）：`,
     queueRow: (seq, sid, done, regMin) => `- 序号 ${seq}：会话 ${sid} ${done ? "✅ 已完成" : "⏳ 等待中"}${regMin ? `，注册于 ${regMin} 分钟前` : ""}`,
