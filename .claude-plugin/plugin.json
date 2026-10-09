@@ -1,0 +1,7 @@
+{
+  "name": "claude-room",
+  "description": "Coordination layer for parallel Claude Code sessions in a shared workspace: file-change broadcasts, edit-conflict soft guards, cross-session messaging with idle-session wake-up, mutex locks, and an unattended task queue.",
+  "version": "0.1.0",
+  "author": { "name": "sk66666" },
+  "license": "MIT"
+}

@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.claude/room/log.jsonl
+.claude/room/mailbox.jsonl
+.claude/room/receipts.jsonl
+.claude/room/unattend.jsonl
+.claude/room/lock-*.json
+scripts/**/log.jsonl
+scripts/**/mailbox.jsonl
+scripts/**/receipts.jsonl
+scripts/**/unattend.jsonl
+scripts/**/lock-*.json

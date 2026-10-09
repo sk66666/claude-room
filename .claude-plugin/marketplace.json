@@ -1,0 +1,11 @@
+{
+  "name": "claude-room-marketplace",
+  "owner": { "name": "sk66666" },
+  "plugins": [
+    {
+      "name": "claude-room",
+      "source": "./",
+      "description": "Coordination layer for parallel Claude Code sessions in a shared workspace."
+    }
+  ]
+}
